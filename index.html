@@ -118,7 +118,8 @@ $('import').onclick=()=>$('import-file').click();$('import-file').onchange=async
 $('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
 const config=JSON.parse($('dm-config').textContent);
 let auth=null,profile=null,people=[],tagCatalog=[],tagReady=false,busy=false,signupMode=false;
-const manager=()=>Boolean(profile&&profile.id===profile.owner_id);
+const manager=()=>Boolean(profile?.enabled&&profile.id===profile.owner_id);
+const canCreateTask=()=>Boolean(profile?.enabled);
 async function api(path,options={}){
  const res=await fetch(config.url+path,{...options,headers:{apikey:config.key,Authorization:'Bearer '+(auth?.access_token||config.key),'Content-Type':'application/json',...options.headers}});
  const raw=await res.text();let data;try{data=raw?JSON.parse(raw):null}catch{throw Error('Resposta inválida do servidor.')}
@@ -128,26 +129,28 @@ async function freshAuth(){if(auth&&Date.now()>auth.expires_at*1000-60000){auth=
 function render(){
  const selection=$('tag-filter').value;const catalog=new Map();for(const item of tagCatalog)catalog.set(item.name.toLocaleLowerCase('pt-PT'),item.name);for(const t of tasks)for(const tag of t.tags||[])catalog.set(tag.toLocaleLowerCase('pt-PT'),tag);
  const tags=[...catalog].sort((a,b)=>a[1].localeCompare(b[1],'pt-PT'));$('tag-filter').replaceChildren(new Option('Todas as tags','all'));$('tag-suggestions').replaceChildren();for(const [key,tag] of tags){$('tag-filter').add(new Option(tag,key));const opt=document.createElement('option');opt.value=tag;$('tag-suggestions').append(opt)}$('tag-filter').value=catalog.has(selection)?selection:'all';
- originalRender();for(const card of $('kanban').querySelectorAll('[data-id]')){const t=tasks.find(x=>x.id===card.dataset.id);if(!t)continue;const row=document.createElement('div');row.className='task-tag-list';for(const tag of t.tags||[]){const badge=document.createElement('span');badge.className='task-tag';badge.textContent=tag;row.append(badge)}if(row.childElementCount)card.querySelector('h3').after(row);if(t.link){const a=document.createElement('a');a.href=t.link;a.target='_blank';a.rel='noopener noreferrer';a.className='task-link-button';a.textContent='Abrir tarefa ↗';a.setAttribute('aria-label','Abrir link de '+t.title);card.append(a)}}const can=manager();for(const id of ['new','first-task'])$(id).hidden=!can;for(const id of ['undo','import','portable'])$(id).hidden=true;document.querySelectorAll('[data-add]').forEach(e=>e.hidden=!can);document.querySelectorAll('[draggable]').forEach(e=>e.draggable=can);$('users').hidden=!can;$('manage-tags').hidden=!can;$('manage-tags-task').hidden=!can;$('empty-all').querySelector('p').textContent=can?'Cria uma tarefa e atribui-a a um utilizador.':'Ainda não tens tarefas atribuídas.'}
+ originalRender();for(const card of $('kanban').querySelectorAll('[data-id]')){const t=tasks.find(x=>x.id===card.dataset.id);if(!t)continue;const row=document.createElement('div');row.className='task-tag-list';for(const tag of t.tags||[]){const badge=document.createElement('span');badge.className='task-tag';badge.textContent=tag;row.append(badge)}if(row.childElementCount)card.querySelector('h3').after(row);if(t.link){const a=document.createElement('a');a.href=t.link;a.target='_blank';a.rel='noopener noreferrer';a.className='task-link-button';a.textContent='Abrir tarefa ↗';a.setAttribute('aria-label','Abrir link de '+t.title);card.append(a)}}const can=manager();for(const id of ['new','first-task'])$(id).hidden=!canCreateTask();for(const id of ['undo','import','portable'])$(id).hidden=true;document.querySelectorAll('[data-add]').forEach(e=>e.hidden=!canCreateTask());document.querySelectorAll('[draggable]').forEach(e=>e.draggable=can);$('users').hidden=!can;$('manage-tags').hidden=!can;$('manage-tags-task').hidden=!can;$('empty-all').querySelector('p').textContent=can?'Cria uma tarefa e atribui-a a um utilizador.':'Ainda não tens tarefas. Cria uma tarefa para ti próprio.'}
 function openTask(id=null,status='todo'){
- if(!profile||(!manager()&&!id))return;originalOpenTask(id,status);
+ if(!canCreateTask()||(id&&!tasks.some(t=>t.id===id)))return;originalOpenTask(id,status);
  const t=tasks.find(x=>x.id===id);$('task-assignee').replaceChildren();
- for(const p of people){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.display_name+(p.enabled?'':' (sem acesso)');$('task-assignee').append(opt)}
+ for(const p of (manager()?people:[{id:profile.id,display_name:profile.display_name,enabled:true}])){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.display_name+(p.enabled?'':' (sem acesso)');$('task-assignee').append(opt)}
  $('task-assignee').value=t?.assignee||profile.id;
  $('task-tags').value=(t?.tags||[]).join(', ');$('task-link').value=t?.link||'';$('task-open-link').hidden=!t?.link;if(t?.link)$('task-open-link').href=t.link;else $('task-open-link').removeAttribute('href');
- for(const el of $('task-form').querySelectorAll('input,select,textarea'))el.disabled=!manager();
- $('task-form').querySelector('[type=submit]').hidden=!manager();$('delete-task').hidden=!manager()||!id;$('dialog-title').textContent=manager()?(id?'Editar tarefa':'Nova tarefa'):'Consultar tarefa';
+ const editable=manager()||!id;
+ for(const el of $('task-form').querySelectorAll('input,select,textarea'))el.disabled=!editable;
+ $('task-assignee').disabled=!manager();
+ $('task-form').querySelector('[type=submit]').hidden=!editable;$('delete-task').hidden=!manager()||!id;$('dialog-title').textContent=id?(manager()?'Editar tarefa':'Consultar tarefa'):(manager()?'Nova tarefa':'Nova tarefa para mim');
 }
 async function load(){await freshAuth();const me=await api('/rest/v1/rpc/dm_shared_identity',{method:'POST',body:'{}'});profile=me?.[0];if(!profile?.enabled)throw Error('O teu acesso ainda não foi aprovado por Pedro Morgado.');
  people=await api('/rest/v1/dm_shared_users?select=id,display_name,enabled&order=display_name');
  tagCatalog=[];tagReady=false;if(manager()){try{tagCatalog=await api('/rest/v1/dm_shared_tags?select=id,name&order=name');tagReady=true}catch{}}
  const rows=await api('/rest/v1/dm_shared_tasks?select=id,assignee,payload&order=created_at.desc');
- tasks=validateData({version:1,tasks:rows.map(r=>({...r.payload,id:r.id,assignee:r.assignee}))});render();$('saved-label').textContent='Atualizado às '+new Date().toLocaleTimeString('pt-PT');$('identity').textContent=profile.display_name+(manager()?' · Gestor':' · Consulta');$('access').hidden=true;$('app').hidden=false;
+ tasks=validateData({version:1,tasks:rows.map(r=>({...r.payload,id:r.id,assignee:r.assignee}))});render();$('saved-label').textContent='Atualizado às '+new Date().toLocaleTimeString('pt-PT');$('identity').textContent=profile.display_name+(manager()?' · Gestor':' · Tarefas pessoais');$('access').hidden=true;$('app').hidden=false;
 }
 function failure(e){$('storage-error').hidden=false;$('storage-error').textContent=e.message;toast(e.message)}
-async function write(action){if(!manager()||busy)return;busy=true;const buttons=[...$('task-form').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{await freshAuth();await action();$('task-dialog').close();await load();$('storage-error').hidden=true;toast('Alteração guardada no Supabase')}catch(e){$('validation').textContent=e.message;$('validation').hidden=false;failure(e)}finally{busy=false;buttons.forEach(b=>b.disabled=false)}}
-$('task-form').onsubmit=e=>{e.preventDefault();if(!manager())return;
- const title=$('task-title').value.trim(),start=$('task-start').value,end=$('task-end').value,assignee=$('task-assignee').value;
+async function write(action){if(!canCreateTask()||busy)return;busy=true;const buttons=[...$('task-form').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{await freshAuth();await action();$('task-dialog').close();await load();$('storage-error').hidden=true;toast('Alteração guardada no Supabase')}catch(e){$('validation').textContent=e.message;$('validation').hidden=false;failure(e)}finally{busy=false;buttons.forEach(b=>b.disabled=false)}}
+$('task-form').onsubmit=e=>{e.preventDefault();if(!canCreateTask()||(editId&&!manager()))return;
+ const title=$('task-title').value.trim(),start=$('task-start').value,end=$('task-end').value,assignee=manager()?$('task-assignee').value:profile.id;
  if(!title||!validDate(start)||!validDate(end)||(start&&end&&start>end)||!assignee){$('validation').textContent='Confirma o título, as datas e o utilizador.';$('validation').hidden=false;return}
  let tags,link;try{tags=taskTags($('task-tags').value.split(',').map(x=>x.trim()).filter(Boolean));link=taskLink($('task-link').value)}catch(error){$('validation').textContent=error.message;$('validation').hidden=false;return;}
  const id=editId||crypto.randomUUID(),old=tasks.find(t=>t.id===id),payload={id,title,start,end,tags,link,status:$('task-status').value,priority:$('task-priority').value,notes:$('task-notes').value,progress:$('task-status').value==='done'?100:0,completedAt:$('task-status').value==='done'?(old?.completedAt||today()):''};

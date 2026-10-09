@@ -1,0 +1,46 @@
+DM-Tarefas — Login no mesmo index.html
+
+1. No Supabase, abre SQL Editor e executa supabase.sql.
+   As tabelas são específicas do DM-Tarefas. Não apagam as tarefas do portal.
+2. Em Authentication > Users cria as contas com email e password:
+   Pedro Morgado, CCenter, Mario Leal, Administrador, Pedro Jesus.
+   Confirma o email das contas ao criá-las. Não coloques passwords no HTML.
+   Se estas contas já existem no mesmo projeto, reutiliza-as.
+   O login nesta página usa email, não o nome visível.
+3. Substitui COLOCAR_EMAIL_PEDRO no definir-pedro.sql pelo email real da
+   conta de Pedro. Executa esse SQL para definir o único gestor.
+4. No index.html procura dm-config e preenche:
+   url: URL do projeto Supabase, sem barra final.
+   key: chave pública publishable ou anon do mesmo projeto.
+   Nunca usar service_role nem uma chave secreta.
+5. Publica apenas index.html na raiz do repositório DM-Tarefas,
+   substituindo o ficheiro anterior.
+6. Entra como Pedro. No botão Utilizadores, aprova os acessos.
+   Cria tarefas e escolhe o utilizador no campo Atribuir a.
+   Criar novas contas com password faz-se em Authentication > Users;
+   aprovar e retirar acesso ao módulo faz-se dentro da página.
+
+Regras
+Pedro é o único gestor. Mesmo o Administrador só consulta as tarefas
+atribuídas. Utilizadores desativados não consultam nem escrevem dados.
+A lista é atualizada a cada 30 segundos, ou pelo botão Atualizar.
+Só Pedro altera o estado, as datas e os restantes campos das tarefas.
+A edição por arrastar foi desativada; usa o formulário de edição.
+Sem Internet não há consulta nem gravação partilhada.
+
+Tarefas antigas
+A versão anterior guardava dados só no navegador. Exporta uma cópia de
+segurança antes de substituir a página. Não se importam automaticamente
+para o Supabase; conserva essa cópia para uma migração posterior.
+
+Validação
+O pacote requer configuração. Não foram executadas gravações, políticas
+nem autenticação no teu projeto Supabase. Depois da instalação, testa
+Pedro e um utilizador de consulta em browsers diferentes: criar tarefa,
+atribuir, consultar e retirar acesso. Confirma que o utilizador de consulta
+não consegue alterar tarefas.
+
+CORREÇÃO: esta versão usa dm_shared_tasks, dm_shared_users e
+dm_shared_owner. Não modifica dm_todo_tasks do portal.
+Substitui o HTML e usa apenas o SQL deste pacote corrigido.
+Tarefas anteriores do portal não são copiadas para o DM-Tarefas.

@@ -166,8 +166,15 @@ $('task-form').onsubmit=e=>{e.preventDefault();if(!canCreateTask()||(editId&&!ma
  write(()=>api('/rest/v1/dm_shared_tasks'+(editId?'?id=eq.'+encodeURIComponent(id):''),{method:editId?'PATCH':'POST',body:JSON.stringify({id,assignee,payload})}));
 };
 $('delete-task').onclick=()=>{if(manager()&&editId&&confirm('Eliminar esta tarefa?'))write(()=>api('/rest/v1/dm_shared_tasks?id=eq.'+encodeURIComponent(editId),{method:'DELETE'}))};
-// Disable the old local drag handlers; all task state changes use the server form.
-$('kanban').addEventListener('dragstart',e=>{e.preventDefault();e.stopImmediatePropagation()},true);
+// Arrastar no Kanban: substitui os handlers locais antigos e grava o novo estado no Supabase.
+let serverDragId=null,justDragged=false;
+function clearServerDrag(){serverDragId=null;document.querySelectorAll('.over,.dragging').forEach(x=>x.classList.remove('over','dragging'))}
+$('kanban').addEventListener('dragstart',e=>{const card=e.target.closest('[data-id]');e.stopImmediatePropagation();if(!card||!manager()||busy){e.preventDefault();return}serverDragId=card.dataset.id;e.dataTransfer.setData('text/plain',serverDragId);e.dataTransfer.effectAllowed='move';card.classList.add('dragging')},true);
+$('kanban').addEventListener('dragover',e=>{e.stopImmediatePropagation();const col=e.target.closest('[data-status]');if(col&&serverDragId){e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.column.over').forEach(x=>{if(x!==col)x.classList.remove('over')});col.classList.add('over')}},true);
+$('kanban').addEventListener('dragleave',e=>{e.stopImmediatePropagation();const col=e.target.closest('[data-status]');if(col&&!col.contains(e.relatedTarget))col.classList.remove('over')},true);
+$('kanban').addEventListener('drop',async e=>{e.preventDefault();e.stopImmediatePropagation();const col=e.target.closest('[data-status]'),id=serverDragId,t=tasks.find(x=>x.id===id);justDragged=true;setTimeout(()=>justDragged=false,250);clearServerDrag();if(!col||!t||!manager()||busy||t.status===col.dataset.status)return;const oldStatus=t.status,oldProgress=t.progress,oldCompletedAt=t.completedAt;t.status=col.dataset.status;if(t.status==='done'){t.progress=100;t.completedAt=t.completedAt||today()}else if(oldStatus==='done'){t.progress=0;t.completedAt=''}render();busy=true;$('saved-label').textContent='A guardar alteração…';try{await freshAuth();await api('/rest/v1/dm_shared_tasks?id=eq.'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({payload:{...t}})});await load();$('storage-error').hidden=true;toast('Tarefa movida para '+statuses[t.status])}catch(error){t.status=oldStatus;t.progress=oldProgress;t.completedAt=oldCompletedAt;render();failure(error)}finally{busy=false}},true);
+$('kanban').addEventListener('dragend',e=>{e.stopImmediatePropagation();clearServerDrag()},true);
+$('kanban').addEventListener('click',e=>{if(justDragged){e.preventDefault();e.stopImmediatePropagation()}},true);
 $('import').onclick=$('undo').onclick=$('portable').onclick=()=>{};
 function showTags(){
  $('tags-error').textContent=tagReady?'':'Executa primeiro tags.sql no Supabase para ativar a gestão de tags.';

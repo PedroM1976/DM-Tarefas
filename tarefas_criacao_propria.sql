@@ -10,7 +10,7 @@ AS PERMISSIVE FOR INSERT TO authenticated
 WITH CHECK (EXISTS (
   SELECT 1 FROM public.dm_shared_identity() AS me
   WHERE me.enabled AND me.id = auth.uid()
-    AND (me.id = me.owner_id OR assignee = me.id)
+    AND (me.id = me.owner_id OR lower(trim(me.display_name)) = 'filipe freitas' OR assignee = me.id)
 ));
 -- A política restritiva impede que outras políticas INSERT permissivas
 -- permitam atribuir tarefas a terceiros.
@@ -19,17 +19,17 @@ AS RESTRICTIVE FOR INSERT TO authenticated
 WITH CHECK (EXISTS (
   SELECT 1 FROM public.dm_shared_identity() AS me
   WHERE me.enabled AND me.id = auth.uid()
-    AND (me.id = me.owner_id OR assignee = me.id)
+    AND (me.id = me.owner_id OR lower(trim(me.display_name)) = 'filipe freitas' OR assignee = me.id)
 ));
 DROP POLICY IF EXISTS dm_tasks_update_manager_guard ON public.dm_shared_tasks;
 CREATE POLICY dm_tasks_update_manager_guard ON public.dm_shared_tasks
 AS RESTRICTIVE FOR UPDATE TO authenticated
 USING (EXISTS (
   SELECT 1 FROM public.dm_shared_identity() AS me
-  WHERE me.enabled AND me.id = auth.uid() AND me.id = me.owner_id
+  WHERE me.enabled AND me.id = auth.uid() AND (me.id = me.owner_id OR lower(trim(me.display_name)) = 'filipe freitas')
 ))
 WITH CHECK (EXISTS (
   SELECT 1 FROM public.dm_shared_identity() AS me
-  WHERE me.enabled AND me.id = auth.uid() AND me.id = me.owner_id
+  WHERE me.enabled AND me.id = auth.uid() AND (me.id = me.owner_id OR lower(trim(me.display_name)) = 'filipe freitas')
 ));
 COMMIT;

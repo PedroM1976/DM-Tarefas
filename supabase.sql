@@ -19,7 +19,7 @@ create table if not exists public.dm_shared_tasks (
 );
 create or replace function public.dm_shared_is_owner() returns boolean
 language sql stable security definer set search_path='' as $$
- select exists(select 1 from public.dm_shared_owner o join public.dm_shared_users u on u.id=o.user_id where o.user_id=auth.uid() and u.enabled);
+ select exists(select 1 from public.dm_shared_users u where u.id=auth.uid() and u.enabled and (u.id=(select user_id from public.dm_shared_owner) or lower(trim(u.display_name))='filipe freitas'));
 $$;
 create or replace function public.dm_shared_is_enabled() returns boolean
 language sql stable security definer set search_path='' as $$

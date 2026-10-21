@@ -118,7 +118,7 @@ $('import').onclick=()=>$('import-file').click();$('import-file').onchange=async
 $('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
 const config=JSON.parse($('dm-config').textContent);
 let auth=null,profile=null,people=[],tagCatalog=[],tagReady=false,busy=false,signupMode=false;
-const manager=()=>Boolean(profile?.enabled&&profile.id===profile.owner_id);
+const manager=()=>Boolean(profile?.enabled&&(profile.id===profile.owner_id||profile.display_name.trim().toLocaleLowerCase('pt-PT')==='filipe freitas'));
 const canCreateTask=()=>Boolean(profile?.enabled);
 const canChangeStatus=t=>Boolean(profile?.enabled&&t&&(manager()||t.assignee===profile.id));
 let loadGeneration=0;

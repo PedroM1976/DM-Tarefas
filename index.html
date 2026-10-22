@@ -133,6 +133,12 @@ async function saveTask(id,body,creating=false){
  if(!Array.isArray(check)||check.length!==1||check[0].payload?.status!==body.payload.status)throw Error('Não foi possível confirmar o estado guardado. Volta a carregar a tarefa e verifica as permissões no Supabase.');
  return saved;
 }
+async function saveTaskStatus(id,status){
+ const saved=await api('/rest/v1/rpc/dm_shared_set_task_status',{
+  method:'POST',body:JSON.stringify({p_task_id:id,p_new_status:status})});
+ if(!saved||saved.status!==status)throw Error('Não foi possível guardar o novo estado da tarefa.');
+ return saved;
+}
 async function api(path,options={}){
  const res=await fetch(config.url+path,{...options,headers:{apikey:config.key,Authorization:'Bearer '+(auth?.access_token||config.key),'Content-Type':'application/json',...options.headers}});
  const raw=await res.text();let data;try{data=raw?JSON.parse(raw):null}catch{throw Error('Resposta inválida do servidor.')}
@@ -158,11 +164,13 @@ function openTask(id=null,status='todo'){
  for(const p of (manager()?people:[{id:profile.id,display_name:profile.display_name,enabled:true}])){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.display_name+(p.enabled?'':' (sem acesso)');$('task-assignee').append(opt)}
  $('task-assignee').value=t?.assignee||profile.id;
  $('task-tags').value=(t?.tags||[]).join(', ');$('task-link').value=t?.link||'';$('task-open-link').hidden=!t?.link;if(t?.link)$('task-open-link').href=t.link;else $('task-open-link').removeAttribute('href');
- const editable=manager()||!id||Boolean(t&&t.assignee===profile.id);
- for(const el of $('task-form').querySelectorAll('input,select,textarea'))el.disabled=!editable;
+ const editableFields=manager()||!id;
+ const editableStatus=manager()||!id||Boolean(t&&t.assignee===profile.id);
+ for(const el of $('task-form').querySelectorAll('input,select,textarea'))el.disabled=true;
  $('task-assignee').disabled=!manager();
- for(const field of ['task-title','task-priority','task-start','task-end','task-tags','task-link','task-notes'])$(field).disabled=!editable;
- $('task-form').querySelector('[type=submit]').hidden=!editable;$('delete-task').hidden=!manager()||!id;$('dialog-title').textContent=id?'Editar tarefa':(manager()?'Nova tarefa':'Nova tarefa para mim');
+ $('task-status').disabled=!editableStatus;
+ for(const field of ['task-title','task-priority','task-start','task-end','task-tags','task-link','task-notes'])$(field).disabled=!editableFields;
+ $('task-form').querySelector('[type=submit]').hidden=!(editableFields||editableStatus);$('delete-task').hidden=!manager()||!id;$('dialog-title').textContent=id?'Editar tarefa':(manager()?'Nova tarefa':'Nova tarefa para mim');
 }
 async function load(){const generation=++loadGeneration;await freshAuth();const me=await api('/rest/v1/rpc/dm_shared_identity',{method:'POST',body:'{}'});profile=me?.[0];if(!profile?.enabled)throw Error('O teu acesso ainda não foi aprovado por Pedro Morgado.');
  people=await api('/rest/v1/dm_shared_users?select=id,display_name,enabled&order=display_name');
@@ -178,7 +186,7 @@ $('task-form').onsubmit=e=>{e.preventDefault();if(!canCreateTask()||busy)return;
  if(!title||!validDate(start)||!validDate(end)||(start&&end&&start>end)||!assignee){$('validation').textContent='Confirma o título, as datas e o utilizador.';$('validation').hidden=false;return}
  let tags=[],link='';try{if(manager()||!existing||canChangeStatus(existing)){tags=taskTags($('task-tags').value.split(',').map(x=>x.trim()).filter(Boolean));link=taskLink($('task-link').value)}}catch(error){$('validation').textContent=error.message;$('validation').hidden=false;return;}
  const id=editId||crypto.randomUUID(),old=tasks.find(t=>t.id===id),payload={...(serverPayloads.get(id)||{}),title,start,end,tags:(manager()||!existing||canChangeStatus(existing))?tags:(old?.tags||[]),link:(manager()||!existing||canChangeStatus(existing))?link:(old?.link||''),status:$('task-status').value,priority:(manager()||!existing||canChangeStatus(existing))?$('task-priority').value:(old?.priority||'normal'),notes:(manager()||!existing||canChangeStatus(existing))?$('task-notes').value:(old?.notes||''),progress:$('task-status').value==='done'?100:0,completedAt:$('task-status').value==='done'?(old?.completedAt||today()):''};
- write(()=>saveTask(id,editId&&!manager()?{payload}:{id,assignee,payload},!editId));
+ write(()=>editId&&!manager()?saveTaskStatus(id,payload.status):saveTask(id,{id,assignee,payload},!editId));
 };
 $('delete-task').onclick=()=>{if(manager()&&editId&&confirm('Eliminar esta tarefa?'))write(()=>api('/rest/v1/dm_shared_tasks?id=eq.'+encodeURIComponent(editId),{method:'DELETE'}))};
 // Arrastar no Kanban: substitui os handlers locais antigos e grava o novo estado no Supabase.
@@ -187,7 +195,7 @@ function clearServerDrag(){serverDragId=null;document.querySelectorAll('.over,.d
 $('kanban').addEventListener('dragstart',e=>{const card=e.target.closest('[data-id]');e.stopImmediatePropagation();if(!card||!canChangeStatus(tasks.find(t=>t.id===card.dataset.id))||busy){e.preventDefault();return}serverDragId=card.dataset.id;e.dataTransfer.setData('text/plain',serverDragId);e.dataTransfer.effectAllowed='move';card.classList.add('dragging')},true);
 $('kanban').addEventListener('dragover',e=>{e.stopImmediatePropagation();const col=e.target.closest('[data-status]');if(col&&serverDragId){e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.column.over').forEach(x=>{if(x!==col)x.classList.remove('over')});col.classList.add('over')}},true);
 $('kanban').addEventListener('dragleave',e=>{e.stopImmediatePropagation();const col=e.target.closest('[data-status]');if(col&&!col.contains(e.relatedTarget))col.classList.remove('over')},true);
-$('kanban').addEventListener('drop',async e=>{e.preventDefault();e.stopImmediatePropagation();const col=e.target.closest('[data-status]'),id=serverDragId,t=tasks.find(x=>x.id===id);justDragged=true;setTimeout(()=>justDragged=false,250);clearServerDrag();if(!col||!canChangeStatus(t)||busy||t.status===col.dataset.status)return;const oldStatus=t.status,oldProgress=t.progress,oldCompletedAt=t.completedAt;t.status=col.dataset.status;if(t.status==='done'){t.progress=100;t.completedAt=t.completedAt||today()}else if(oldStatus==='done'){t.progress=0;t.completedAt=''}render();busy=true;++loadGeneration;$('saved-label').textContent='A guardar alteração…';try{await freshAuth();await saveTask(id,{payload:{...(serverPayloads.get(id)||{}),status:t.status,progress:t.progress,completedAt:t.completedAt}});await load();$('storage-error').hidden=true;toast('Tarefa movida para '+statuses[t.status])}catch(error){t.status=oldStatus;t.progress=oldProgress;t.completedAt=oldCompletedAt;render();failure(error)}finally{busy=false}},true);
+$('kanban').addEventListener('drop',async e=>{e.preventDefault();e.stopImmediatePropagation();const col=e.target.closest('[data-status]'),id=serverDragId,t=tasks.find(x=>x.id===id);justDragged=true;setTimeout(()=>justDragged=false,250);clearServerDrag();if(!col||!canChangeStatus(t)||busy||t.status===col.dataset.status)return;const oldStatus=t.status,oldProgress=t.progress,oldCompletedAt=t.completedAt;t.status=col.dataset.status;if(t.status==='done'){t.progress=100;t.completedAt=t.completedAt||today()}else if(oldStatus==='done'){t.progress=0;t.completedAt=''}render();busy=true;++loadGeneration;$('saved-label').textContent='A guardar alteração…';try{await freshAuth();await saveTaskStatus(id,t.status);await load();$('storage-error').hidden=true;toast('Tarefa movida para '+statuses[t.status])}catch(error){t.status=oldStatus;t.progress=oldProgress;t.completedAt=oldCompletedAt;render();failure(error)}finally{busy=false}},true);
 $('kanban').addEventListener('dragend',e=>{e.stopImmediatePropagation();clearServerDrag()},true);
 $('kanban').addEventListener('click',e=>{if(justDragged){e.preventDefault();e.stopImmediatePropagation()}},true);
 $('import').onclick=$('undo').onclick=$('portable').onclick=()=>{};
